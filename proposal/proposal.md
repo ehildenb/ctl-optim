@@ -16,12 +16,12 @@ implementation can be tricky. When this translation is done by hand, there can b
 no guarantee that it is faithful to the original optimization. This can lead to
 wasted developer time tracking down bugs in optimization implementations.
 
-To solve this, we'd like to define a domain specific language (DSL) for writing
+To help, we'd like to define a domain specific language (DSL) for writing
 optimizations in. A developer using such a DSL should be able to clearly state
 exactly the necessary information (and nothing more) to implement the
 optimization; afterwards the DSL should be compiled into an executable form
-either by generating C++ for use with LLVM or by making an executable program which
-operates directly on the LLVM IR syntax.
+either by generating C++ for use with LLVM or by making an executable program
+which operates directly on the LLVM IR syntax.
 
 Ideally, one could write down exactly the "psuedo-code" used in academic papers
 to specify the optimization and that would be enough to generate the entire
@@ -38,7 +38,7 @@ See bottom for more details on references.
 
 Alive Peephole Optimizations[@alive-peephole]:
 :   Lopes et al. define a DSL based on templates for specifying peephole
-    optimizations on the LLVM IR (these templates resemple rewriting logic
+    optimizations on the LLVM IR (these templates resemble rewriting logic
     specifications). Additionally, pre-conditions on the optimizations can be
     specified (so that the templates do not over-match). Their implementation
     verifies the transformation correct using an external SMT solver, then
@@ -56,27 +56,33 @@ PTRANS using VeriF-OPT[@ptrans-verif-opt]:
 Project
 =======
 
-In this project, we will define a DSL to allow user to use this language to
-define most optimizations in CFG including Peephole optimizations. This DSL will
-be entirely generic in the sense that it will work on a general version of CFG
-which is allowed to instantiated to other languages optimizations which can use
-these CFGs. We will try to define the syntax and transition rules of the DSL in
-K and translate it into a version in Isabelle by using our existing semantic
-preserving translator from K to Isabelle. In this case, we can verify the
-correctness of the framework of the DSL in Isabelle and automatically generate
-an optimization tool in Haskell, which is based on the DSL with LLVM semantics
-defined in Isabelle. The automatic translated code can give us the semantic
-equivalent translation from the code in Isabelle, which makes the tool in
-Haskell more convincing.  This tool will allow users to generate optimized LLVM
-programs directly. We can also use the clang compiler to compile the tool in
-Haskell to a version in LLVM. Another thought is to actually compile the Haskell
-code to a version in C++ and try to fit the C++ code into the current LLVM
-framework, which seems a harder task.
+We will define a DSL that allow user to define most (if not all) CFG
+optimizations. This DSL will be entirely generic in the sense that it is defined
+in terms of CFGs; only after supplying patterns specific to a target language
+instructions is the DSL instantiated to a particular target. The syntax and
+semantics of the DSL will be defined in K. To make it work for LLVM, we need the
+syntax and semantics of a CTL DSL in K, as well as the syntax and semantics of
+LLVM in K (which is mostly done, though not thoroughly tested).
+
+Intuitively, we can think of the DSL as providing ways to "pattern match" both
+instructions in the language (the language specific part) as well as generic CFG
+structures. We can think of an instruction pattern match as being an "atomic
+predicate" in CTL, with the CTL connectives extending these individual
+instruction patterns to also include the context of the surrounding CFG. In this
+way, using only structural patterns, we can concisely express restrictions on
+which instructions to transform as well what the surrounding CFG must look like
+for the transformation to be valid.
+
+Using the (semantics preserving) shallow embedding of K into Isabelle that Liyi
+has worked on, we will be able to export optimizations written in our DSL to the
+Isabelle theorem prover. Using this we can verify optimization correctness, as
+well as generate executable code to run the optimizations with. We could
+(probably) even compile the resulting executable code into a library that LLVM
+could use directly, though this may be more trouble than it's worth.
 
 The project can be broken down into (roughly) four stages:
 
 -   Define LLVM-semantics in K-framework (mostly done)
--   Define K-semantics for simple LLVM rewrites ("peephole" optimizations)
 -   Define K-semantics for CFG rewrite DSL (with PTRANS in mind)
 -   Implement key optimizations for demonstration purposes
 
@@ -93,6 +99,11 @@ The LLVM semantics are defined (mostly, though not tested extensively) in the
 K-framework. We can instantiated our DSL language to a specific language, LLVM
 and show that we can do optimizations on LLVM programs correctly and
 efficiently.
+
+We need to have direct IR rewriting so that atomic predicates used in the CTL
+formulae can be expressed using patterns over the target language. This makes
+writing optimizations much easier, and make reading the written optimizations
+easier as well.
 
 CFG Rewrites
 ------------
@@ -123,24 +134,23 @@ optimizations.
 Test suite
 ----------
 
-Along our project development, we will use the same test suite to of LLVM
-semantics to test our optimization tool. The test suite will involve 6000 LLVM
-programs which mostly are translated from real C programs. The basic idea of the
-testing is to test whether or not a program will preserve the semantic behavior
-of the original programs.  Whether or not the DSL can catch all the described
-and desired behaviors are another things that we want to test but we will test
-it by manually drawing some selected programs and comparing it with the CFGs
-generated by our DSL.  By using this test suite, we can show our tool is useful
-and is able to handle most LLVM programs.
-
+Because we will be formally verifying our optimizations, we will assume that
+they are correct for the purposes of testing. Instead, we will test the
+performance of generated code to make sure our optimization strategies are
+"complete". To do this, we will take random samples from the LLVM test-suite
+(focused on ones targeted at intra-procedural analysis and performance
+benchmarks) and run them through our optimization as well as the corresponding
+built-in LLVM optimization pass. The resulting code will be benchmarked for
+performance. We will also manually inspect some of them to ensure our
+transformations are not doing anything "weird".
 
 
 Proposed DSL Syntax
 ===================
 
 The first draft of the DSL syntax is available in the
-[git repository](https://github.com/ehildenb/ctl-optim). The sections below
-refer to the syntax defined there.
+[git repository](https://github.com/ehildenb/ctl-optim) in file `k/syntax`. The
+sections below refer to the syntax defined there.
 
 CTL Arrows
 ----------
@@ -155,9 +165,9 @@ satisfied at that point in the CFG (or any other directed graph structure).
 ### Example: Dominance
 
 To claim that CTL is useful for CFG-based optimizations, we must show we can
-express simple concepts like "dominance" and "dominance frontiers". In the
-following example, we show how we could eliminate parts of the CFG which we know
-will throw an error because they are dominated by a divide-by-zero instruction.
+express simple concepts like "dominance". In the following example, we show how
+we could eliminate parts of the CFG which we know will throw an error because
+they are dominated by a divide-by-zero instruction.
 
 ```optimization
 pattern [dominatedBy I] : I <-A--
@@ -199,9 +209,8 @@ have a predecessor which is dominated by `I`. Using the fact that space is an
 implicit `and` operator, we can write it in the quite intuitive structural
 manner given above.
 
-
 Usage
-=====
+-----
 
 We will define patterns to pick out structures in the graph (thus program) that
 can be transformed. When a pattern matches, part of the pattern will be
@@ -209,8 +218,7 @@ re-written using a rule (this is when the optimization happens). We can control
 the order to try rules in using strategies which allows us to sequence rules as
 well as apply rules as many times as possible.
 
-Example: Constant Propagation
------------------------------
+### Example: Constant Propagation
 
 Using this DSL, we imagine defining constant propagation in this way:
 
@@ -227,13 +235,12 @@ rule [constFold] : c1:const +  c2:const     =>   c1 +Int   c2
 strategy [CONST] : (constProp* ; constFold*)*
 ```
 
-Pattern `usesTerm` will only match instructions which use `c` (the `uses c` part)
-*and* match the pattern `c = t <-A not (c = t')--`. The part `c = t <-A ... --`
-means that all backwards paths from the instruction must go through an
-instruction that matches `c = t`. The part `not (c = t')` says that along all
-such backwards paths, it must *not* match the instruction `c = t'`. Matched
-instructions use the term `c`, and the most recent definition of variable `c`
-will be the term `t`.
+`usesTerm` will only match instructions which use `c` (the `uses c` part) *and*
+match the pattern `c = t <-A not (c = t')--`. The part `c = t <-A ... --` means
+that all backwards paths from the instruction must go through an instruction
+that matches `c = t`. The part `not (c = t')` says that along all such backwards
+paths, it must *not* match the instruction `c = t'`. Matched instructions use
+the variable `c`, and the most recent definition of `c` will be the term `t`.
 
 To make the `constProp` rule, we instantiate the pattern `usesTerm` with the
 second argument having the additional restriction that it must be a constant.
@@ -250,22 +257,21 @@ times as possible, followed by `constFold` as many times as possible. The entire
 sequence of propagation followed by folding will be applied as many times as
 possible too (the outer `*`).
 
-Example: Dead-code Elimination
-------------------------------
+### Example: Dead-code Elimination
 
 We can define dead-code elimination as follows:
 
 ```optimization
-pattern [deadCode] : c = t --A-> not (uses c)
+pattern [deadCode] : c = t (not (--E-> uses c))
 
 rule [deadElim] : deadCode => noop
 
 strategy [DEADCODE] : deadElim*
 ```
 
-Here we define the pattern `deadCode` which matches instructions of the form `c
-= t` (assignment to `c`) where the pattern `not (uses c)` is matched forever on
-all forward paths (the `--A->` part dictates "all forward paths").
+Pattern `deadCode` matches instructions of the form `c = t` (assignment to `c`)
+where the pattern `(not --E-> uses c)` is matched as well. This pattern means
+"no path exists (`not --E-> ...`) which eventually uses c (`uses c`)".
 
 The rule `deadElim` is simple - if some instruction matches `deadCode`, it is
 replaced by `noop`. The `DEADCODE` strategy repeatedly applies `DEADCODE` until
@@ -277,15 +283,6 @@ performs constant propagation and dead-code elimination.
 ```
 strategy [CONST-DEAD]   : (CONST* ; DEADCODE*)*
 ```
-
-— Does K already have an Isabelle back end?  (I was told it does have a Coq back
-end, but don’t know about Isabelle.)  I assume it does, because if not, then
-exporting the K semantics of LLVM to Isabelle could be far too time-consuming.
-In any case, I encourage you to think about whether to create one DSL instead of
-two, and if so, which one.
-
-K does not have an Isabelle back-end yet, but Liyi Li has a tool in shallow
-embedding a K definition into an Isabelle definition.
 
 
 Proposed Timetable
