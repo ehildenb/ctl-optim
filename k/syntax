@@ -1,0 +1,56 @@
+(* Language specific syntax *)
+(*--------------------------*)
+syntax Exp          ::= ... | Exp ":" ExpPattern | ...
+syntax Term         ::= ...
+                      | Var "=" Exp                         (* assignment *)
+                      | Term ":" TermPattern                (* pretty predicates *)
+                      | ...
+
+(* CTL spatial quantifiers *)
+(*-------------------------*)
+syntax CTLQuant     ::= "A"                                 (* for all paths *)
+                      | "E"                                 (* exists a path *)
+
+(* CTL Logic Connectives *)
+(*-----------------------*)
+syntax CTL  ::= InstPattern
+              | "--" CTLQuant ">" InstPattern               (* `next` *)
+              | InstPattern "<" CTLQuant "--"               (* backwards `next` *)
+              | "--" CTLQuant InstPattern "->" InstPattern  (* `until` *)
+              | InstPattern "<-" CTLQuant InstPattern "--"  (* backwards `until` *)
+              | "--" CTLQuant "->"                          (* `eventually` *)
+              | "<-" CTLQuant "--"                          (* backwards `eventually` *)
+
+(* Instruction Patterns *)
+(*----------------------*)
+syntax InstPattern  ::= Term
+                      | CTL                                 (* inclusion *)
+                      | PatternName List{InstPattern}       (* allow definitions *)
+                      | Term ":" InstPattern                (* pretty predicates *)
+                      | "not" InstPattern                   (* `not` *)
+                      | InstPattern " " InstPattern [left]  (* `and` *)
+                      | InstPattern "|" InstPattern [left]  (* `or` *)
+
+(* Syntax for defining patterns *)
+(*------------------------------*)
+syntax PatternDef   ::= "pattern" "[" PatternName List{Var} "]" ":" InstPattern
+
+(* Transformation rule syntax *)
+(*----------------------------*)
+syntax Rule         ::= InstPattern "=>" InstPattern
+                      | InstPattern "=>" InstPattern if InstPattern
+
+(* Define a transformation rule *)
+(*------------------------------*)
+syntax RuleDef      ::= "rule" "[" RuleName "]" ":" List{Rule}
+
+(* How to build composite transformations *)
+(*----------------------------------------*)
+syntax Strategy     ::= RuleName                            (* apply rule once *)
+                      | StrategyName                        (* apply strategy once *)
+                      | Strategy "*"                        (* apply many *)
+                      | Strategy ";" Strategy [left]        (* sequence *)
+
+(* Name a list of rules as belonging to a transformation *)
+(*-------------------------------------------------------*)
+syntax StrategyDef  ::= "strategy" "[" StrategyName "]" ":" Strategy

@@ -138,61 +138,9 @@ and is able to handle most LLVM programs.
 Proposed DSL Syntax
 ===================
 
-Here is the first draft (still rough) of the DSL we are proposing. It contains
-both instruction patterns (which would be used for peephole optimizations) as
-well as graph patterns (using CTL connectives to describe allowable graph
-structures).
-
-```k
-(* CTL spatial quantifiers *)
-(*-------------------------*)
-syntax CTLQuant     ::= "A"                                 (* for all paths *)
-                      | "E"                                 (* exists a path *)
-
-(* CTL Logic Connectives *)
-(*-----------------------*)
-syntax CTL  ::= InstPattern
-              | "--" CTLQuant ">" InstPattern               (* `next` *)
-              | InstPattern "<" CTLQuant "--"               (* backwards `next` *)
-              | "--" CTLQuant InstPattern "->" InstPattern  (* `until` *)
-              | InstPattern "<-" CTLQuant InstPattern "--"  (* backwards `until` *)
-              | "--" CTLQuant "->"                          (* `eventually` *)
-              | "<-" CTLQuant "--"                          (* backwards `eventually` *)
-
-(* Instruction Patterns *)
-(*----------------------*)
-syntax InstPattern  ::= Term                                (* domain specific *)
-                      | CTL                                 (* inclusion *)
-                      | PatternName List{Var}               (* allow definitions *)
-                      | Var ":" InstPattern                 (* pretty predicates *)
-                      | "not" InstPattern                   (* `not` *)
-                      | InstPattern " " InstPattern [left]  (* `and` *)
-                      | InstPattern "|" InstPattern [left]  (* `or` *)
-
-(* Syntax for defining patterns *)
-(*------------------------------*)
-syntax PatternDef   ::= "pattern" "[" PatternName List{Var} "]" ":" InstPattern
-
-(* Transformation rule syntax *)
-(*----------------------------*)
-syntax Rule         ::= InstPattern "=>" InstPattern
-                      | InstPattern "=>" InstPattern if InstPattern
-
-(* Define a transformation rule *)
-(*------------------------------*)
-syntax RuleDef      ::= "rule" "[" RuleName "]" ":" List{Rule}
-
-(* How to build composite transformations *)
-(*----------------------------------------*)
-syntax Strategy     ::= RuleName                            (* apply rule once *)
-                      | StrategyName                        (* apply strategy once *)
-                      | Strategy "*"                        (* apply many *)
-                      | Strategy ";" Strategy [left]        (* sequence *)
-
-(* Name a list of rules as belonging to a transformation *)
-(*-------------------------------------------------------*)
-syntax StrategyDef  ::= "strategy" "[" StrategyName "]" ":" Strategy
-```
+The first draft of the DSL syntax is available in the
+[git repository](https://github.com/ehildenb/ctl-optim). The sections below
+refer to the syntax defined there.
 
 CTL Arrows
 ----------
@@ -267,31 +215,32 @@ Example: Constant Propagation
 Using this DSL, we imagine defining constant propagation in this way:
 
 ```optimization
-pattern [termUse c t] : c = t <-A not (c = t')-- uses c
+pattern [usesTerm c t] : c = t <-A not (c = t')-- uses c
 
-rule [constProp] : I => I[t/c] if I:(termUse c (t:const))
+rule [constProp] : I:(usesTerm c (t:const)) => I[t/c]
 
-rule [constFold] : c1:const +  c2:const   =>   c1 +Int   c2
-                   c1:const *  c2:const   =>   c1 *Int   c2
-                   c1:const -  c2:const   =>   c1 -Int   c2
-                   c1:const && c2:const   =>   c1 &&Bool c2
+rule [constFold] : c1:const +  c2:const     =>   c1 +Int   c2
+                   c1:const *  c2:const     =>   c1 *Int   c2
+                   c1:const -  c2:const     =>   c1 -Int   c2
+                   c1:const && c2:const     =>   c1 &&Bool c2
 
 strategy [CONST] : (constProp* ; constFold*)*
 ```
 
-Pattern `termUse` will only match instructions which use `c` (the `uses c` part)
-and match the pattern `c = t <-A not (c = t')--`. The part `c = t <-A ... --`
+Pattern `usesTerm` will only match instructions which use `c` (the `uses c` part)
+*and* match the pattern `c = t <-A not (c = t')--`. The part `c = t <-A ... --`
 means that all backwards paths from the instruction must go through an
 instruction that matches `c = t`. The part `not (c = t')` says that along all
-such backwards paths, it must *not* match the instruction `c = t'`. This
-captures the fact that the instruction of interest definitely uses the term `t`
-stored in variable `c`.
+such backwards paths, it must *not* match the instruction `c = t'`. Matched
+instructions use the term `c`, and the most recent definition of variable `c`
+will be the term `t`.
 
-To make the `constProp` rule, we instantiate the pattern `termUse` with the
-second argument having the additional restriction that it must be a constant, to
-get the final pattern `I:(termUse c (t:const))`. If we find an instruction `I`
-which matches this pattern, we replace it with `I[t/c]`, which is the same
-instruction `I` where every occurrence of `c` has been replaced by the constant `t`.
+To make the `constProp` rule, we instantiate the pattern `usesTerm` with the
+second argument having the additional restriction that it must be a constant.
+This gives the final pattern `I:(usesTerm c (t:const))`. If we find an
+instruction `I` which matches this pattern, we replace it with `I[t/c]`, which
+is the same instruction `I` where every occurrence of `c` has been replaced by
+the constant `t`.
 
 We also provide a `constFold` rule which simply replaces expressions which have
 constants in them with the expression actually calculated.
@@ -299,7 +248,7 @@ constants in them with the expression actually calculated.
 Finally, we provide the strategy `CONST`, which will apply `constProp` as many
 times as possible, followed by `constFold` as many times as possible. The entire
 sequence of propagation followed by folding will be applied as many times as
-possible too.
+possible too (the outer `*`).
 
 Example: Dead-code Elimination
 ------------------------------
