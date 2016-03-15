@@ -177,10 +177,11 @@ rule [removeError] : dominatedBy (c = E:Exp / 0) => noop
 
 Here, we define a pattern `dominatedBy I`, which will match some other
 instruction if it is dominated by the instruction `I`. The pattern used is
-`I <-A--`, which in CTL means "any instruction where all backwards paths go
-through instruction `I`". When instantiated with `c = E / 0`, this means "any
-instruction where all backwards paths go through an instruction which calculates
-an expression `E` divided by `0` and assigns it to some variable `c`".
+`I <-A--`, which in CTL this is the `backwards eventually I` operator, which
+means "any instruction where all backwards paths go through instruction `I`".
+When instantiated with `c = E / 0`, this means "any instruction where all
+backwards paths go through an instruction which calculates an expression `E`
+divided by `0` and assigns it to some variable `c`".
 
 We also make the rule `removeError` which will rewrite an instruction to a
 `noop` if it is dominated by `c = E:Exp / 0`.
@@ -223,7 +224,7 @@ well as apply rules as many times as possible.
 Using this DSL, we imagine defining constant propagation in this way:
 
 ```optimization
-pattern [usesTerm c t] : c = t <-A not (c = t')-- uses c
+pattern [usesTerm c t] : c = t <-A not c = t'-- uses c
 
 rule [constProp] : I:(usesTerm c (t:const)) => I[t/c]
 
@@ -259,10 +260,11 @@ possible too (the outer `*`).
 
 ### Example: Dead-code Elimination
 
-We can define dead-code elimination as follows:
+We can define dead-code elimination as follows (assuming an `exit` pattern which
+matches exit nodes and a `noop` instruction):
 
 ```optimization
-pattern [deadCode] : c = t (not (--E-> uses c))
+pattern [deadCode] : c = t --A not uses c-> exit
 
 rule [deadElim] : deadCode => noop
 
@@ -270,8 +272,8 @@ strategy [DEADCODE] : deadElim*
 ```
 
 Pattern `deadCode` matches instructions of the form `c = t` (assignment to `c`)
-where the pattern `(not --E-> uses c)` is matched as well. This pattern means
-"no path exists (`not --E-> ...`) which eventually uses c (`uses c`)".
+where the pattern `(--A not uses c-> exit` is matched as well. This pattern
+means "all paths to `exit` don't use `c` anywhere along the path".
 
 The rule `deadElim` is simple - if some instruction matches `deadCode`, it is
 replaced by `noop`. The `DEADCODE` strategy repeatedly applies `DEADCODE` until
@@ -288,22 +290,27 @@ strategy [CONST-DEAD]   : (CONST* ; DEADCODE*)*
 Proposed Timetable
 ==================
 
-### March 14
+### March 14 (passed)
 
--   liyili2:  Provide K definitions for PTRANS CFG-rewrites, make sure we can
-              unite K definition of LLVM semantics and CFG-rewrites in PTRANS
--   hildenb2: Provide DSL for specifying LLVM IR rewrites (in K)
+-   Provide syntax for matching LLVM instructions (using K syntax/semantics)
+-   Provide syntax for matching CFG structures (mostly done)
+-   Have a few "ideal" examples written up (done above)
 
 ### March 28
 
--   liyili2:  Provide "sugared" CFG-rewrite DSL in K
--   hildenb2: Implement and test some peephole optimizations, compare with Alive
+-   Working example of exporting optimizations to Haskell executable
+-   Have "library" of patterns that compiler optimization would find useful
 
 ### April 18
 
--   liyili2:  Implement generic dataflow analysis algorithm using CFG framework
--   hildenb2: Make specific CONST dataflow analysis algorithm, ensure that
-              extending generic algorithm to specific instance is "easy"
+-   Preliminary tests of Haskell optimization executables for correctness
+-   Proofs of some small optimizations' correctness using Isabelle
+-   Performance tests of optimized programs vs LLVM built-in
+
+### April 28
+
+-   Extensive performance benchmarks of optimizations
+-   Begin writing report with results
 
 
 References
