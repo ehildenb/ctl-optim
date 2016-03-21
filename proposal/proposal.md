@@ -126,10 +126,9 @@ Implement Optimizations
 
 To demonstrate the correctness of our approach, we will write a few key
 optimizations in our DSL and prove their correctness (as well as analyzing
-their performance). Suggested optimizations are peephole optimizations (which we
-can compare against the Alive implementation), SROA (which we can compare
-against the LLVM built-in implementation), and perhaps automatic parallelization
-optimizations.
+their performance). What would be more important here is creating a large amount
+of "useful patterns" which can be used to implement numerous optimizations.
+Below there are a couple toy examples of some patterns, rules, and strategies.
 
 Test suite
 ----------
